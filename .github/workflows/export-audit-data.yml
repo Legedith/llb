@@ -1,0 +1,51 @@
+name: Export LL.B. audit data
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/export-audit-data.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package graph and content inventories
+        run: |
+          set -euo pipefail
+          mkdir -p audit-export
+          cp data/curriculum.json audit-export/
+          cp data/content-index.json audit-export/
+          cp data/content-report.json audit-export/
+          cp tools/enrich_nodes.py audit-export/
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          graph = json.loads(Path('data/curriculum.json').read_text())
+          rows = []
+          for node_id, node in graph['nodes'].items():
+              rows.append({
+                  'id': node_id,
+                  'kind': node.get('kind'),
+                  'title': node.get('title'),
+                  'code': node.get('code'),
+                  'term': node.get('term'),
+                  'parent': node.get('parent'),
+                  'subjectId': node.get('subjectId'),
+                  'moduleId': node.get('moduleId'),
+                  'laws': node.get('laws', []),
+                  'sourceIds': node.get('sourceIds', []),
+                  'learnable': bool(node.get('learnable')),
+              })
+          Path('audit-export/nodes-compact.json').write_text(json.dumps(rows, ensure_ascii=False), encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llb-audit-data
+          path: audit-export/
+          retention-days: 1
