@@ -71,9 +71,16 @@ jobs:
               'termCounts': {'1': 5, '2': 5, '3': 7, '4': 10, '5': 10, '6': 8},
           }
           assert report['valid'] is True, report
-          assert report['cycleCount'] == 0
-          assert report['topologicalLearnableNodes'] == 3908
+          assert all(report['checks'].values()), report['checks']
+          assert report['stats'] == expected, {'expected': expected, 'actual': report['stats']}
           assert stats == expected, {'expected': expected, 'actual': stats}
+          learnable = {node_id for node_id, node in graph['nodes'].items() if node.get('learnable')}
+          order = graph['learningOrder']
+          position = {node_id: index for index, node_id in enumerate(order)}
+          strict_edges = [edge for edge in graph['edges'] if edge['type'] == 'prerequisite']
+          assert len(order) == 3908 and set(order) == learnable
+          assert len(strict_edges) == 4043
+          assert all(position[edge['from']] < position[edge['to']] for edge in strict_edges)
           required = [
               'index.html', 'styles.css', 'app.js', 'sw.js',
               'data/curriculum.json', 'data/schema.md',
