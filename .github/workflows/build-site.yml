@@ -71,8 +71,8 @@ jobs:
               'termCounts': {'1': 5, '2': 5, '3': 7, '4': 10, '5': 10, '6': 8},
           }
           assert report['valid'] is True, report
-          assert report['strictCycles'] == []
-          assert report['strictTopologicalNodes'] == 3908
+          assert report['cycleCount'] == 0
+          assert report['topologicalLearnableNodes'] == 3908
           assert stats == expected, {'expected': expected, 'actual': stats}
           required = [
               'index.html', 'styles.css', 'app.js', 'sw.js',
