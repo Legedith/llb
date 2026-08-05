@@ -1,0 +1,58 @@
+{
+  "valid": true,
+  "contentVersion": "3.0.0",
+  "generatedOn": "2026-08-06",
+  "nodeCount": 4337,
+  "pageCount": 4337,
+  "learnablePageCount": 3908,
+  "checks": {
+    "completeCoverage": true,
+    "requiredSections": true,
+    "minimumSubstance": true,
+    "noForbiddenMarkers": true,
+    "uniqueIndexIds": true,
+    "rootRoutesToPages": true
+  },
+  "completeCoverage": true,
+  "requiredSections": [
+    "orientation",
+    "eli15",
+    "outcomes",
+    "prerequisite-bridge",
+    "concept-map",
+    "core-note",
+    "issue-method",
+    "boundaries",
+    "authority-map",
+    "worked-problem",
+    "exam-method",
+    "revision",
+    "self-test",
+    "sources",
+    "progression"
+  ],
+  "wordCounts": {
+    "minimum": 2843,
+    "average": 3316.3,
+    "maximum": 4087,
+    "total": 14382580
+  },
+  "kindCounts": {
+    "foundation": 13,
+    "module": 384,
+    "skill": 13,
+    "subject": 45,
+    "topic": 3882
+  },
+  "missingPages": [],
+  "shortPages": {},
+  "sectionFailures": {},
+  "forbiddenMarkers": {},
+  "integrity": {
+    "originalExplanations": true,
+    "sourceLinked": true,
+    "currentLawWarningOnEveryPage": true,
+    "unverifiedQuotationsOrHoldingsGenerated": false,
+    "sequenceLocksHideContent": false
+  }
+}

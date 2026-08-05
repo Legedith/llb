@@ -368,7 +368,7 @@
     const visible = subjects.filter(subjectVisible);
     const coreCount = visible.filter(s => !s.elective).length;
     const electiveCount = visible.filter(s => s.elective).length;
-    els.browseSummary.innerHTML = `<span class="summary-pill">${visible.length} papers</span><span class="summary-pill">${coreCount} core</span><span class="summary-pill">${electiveCount} elective</span><span class="summary-pill">topics render when opened</span>`;
+    els.browseSummary.innerHTML = `<span class="summary-pill">${visible.length} papers</span><span class="summary-pill">${coreCount} core</span><span class="summary-pill">${electiveCount} elective</span><span class="summary-pill">every node opens a full study page</span>`;
 
     const terms = [1,2,3,4,5,6].filter(term => state.terms.has(term));
     els.catalogTree.innerHTML = terms.map(term => {
@@ -385,7 +385,7 @@
     const warning = subject.sourceNote ? ' · source note' : '';
     return `<details class="subject-block" data-subject="${subject.id}">
       <summary class="subject-summary"><span class="paper-code">${escapeHtml(subject.code)}</span><span><h3>${escapeHtml(subject.title)}</h3><small>${subject.moduleCount} modules · ${subject.topicCount} nodes${warning}</small></span><span class="paper-type ${subject.elective ? 'elective' : ''}">${subject.elective ? 'Elective' : 'Core'}</span></summary>
-      <div class="subject-actions"><button class="small-button" type="button" data-inspect="${subject.id}">Inspect paper</button><a class="small-button" href="${escapeAttr(subject.notePath)}">Note scaffold</a></div>
+      <div class="subject-actions"><button class="small-button" type="button" data-inspect="${subject.id}">Inspect paper</button><a class="small-button" href="${escapeAttr(subject.notePath)}">Study source index</a></div>
       <div class="module-list">${subject.moduleIds.map(mid => moduleBlock(nodes[mid])).join('')}</div>
     </details>`;
   }
@@ -512,7 +512,7 @@
       const warning = subject.sourceNote ? `<span class="warning-badge">Edition / source note</span>` : '';
       return `<article class="source-card"><div class="source-card-head"><span class="paper-code">${escapeHtml(subject.code)}</span><div><h3>${escapeHtml(subject.title)}</h3><div class="edition">Term ${subject.term} · ${subject.elective ? 'Elective' : 'Core'} · ${escapeHtml(subject.edition || 'Edition not stated')}</div>${warning}</div></div>
         <p>${escapeHtml(subject.sourceNote || 'Official DU course material; verify present law before relying on substantive propositions.')}</p>
-        <div class="source-actions"><a class="small-button" href="${escapeAttr(subject.source)}" target="_blank" rel="noopener">Open DU source</a><button class="small-button" type="button" data-inspect="${subject.id}">Inspect nodes</button><a class="small-button" href="${escapeAttr(subject.notePath)}">Note scaffold</a></div></article>`;
+        <div class="source-actions"><a class="small-button" href="${escapeAttr(subject.source)}" target="_blank" rel="noopener">Open DU source</a><button class="small-button" type="button" data-inspect="${subject.id}">Inspect nodes</button><a class="small-button" href="${escapeAttr(subject.notePath)}">Study source index</a></div></article>`;
     }).join('') || `<div class="empty-state">No source matches the filters.</div>`;
   }
 
@@ -580,14 +580,8 @@
     state.lastNode = id;
     state.focusNode = id;
     saveLocalState();
-    els.nodeBreadcrumb.textContent = (node.breadcrumb || [node.title]).join(' › ');
-    els.nodeContent.innerHTML = renderNodeContent(node);
-    bindNodeDialogActions(node);
-    if (!els.nodeDialog.open) els.nodeDialog.showModal();
-    if (updateHash) { try { history.replaceState(null, '', `#node=${encodeURIComponent(id)}`); } catch (_) {} }
-    renderFocusGraph();
-    renderSubjectGraph();
     closeSearch();
+    window.location.assign(`nodes/${encodeURIComponent(id)}/`);
   }
 
   function closeNode() {
@@ -625,7 +619,7 @@
       ${node.learnable ? `<button id="completeNodeAction" class="button" type="button">${completeLabel}</button>` : ''}
       <button id="bookmarkNodeAction" class="button secondary" type="button">${bookmarkLabel}</button>
       <button id="focusNodeAction" class="button secondary ${node.learnable ? '' : 'wide'}" type="button">Focus in graph</button>
-      <a class="button secondary" href="${escapeAttr(githubHref)}" target="_blank" rel="noopener">Open note on GitHub</a>
+      <a class="button secondary" href="${escapeAttr(githubHref)}" target="_blank" rel="noopener">Open source index on GitHub</a>
       ${node.source ? `<a class="button secondary" href="${escapeAttr(node.source)}" target="_blank" rel="noopener">Open DU source</a>` : ''}
     </div>`;
     return `<span class="node-kicker">${escapeHtml(code)} · ${escapeHtml(kindLabel(node))}</span><h2>${escapeHtml(node.title)}</h2><p class="summary">${escapeHtml(node.summary || '')}</p>${eli}

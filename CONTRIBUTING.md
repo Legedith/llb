@@ -1,9 +1,7 @@
-# Contributing notes
+# Contributing legal study content
 
-Keep the graph stable and improve content behind stable node IDs.
+The deployed node pages are generated. Change `tools/enrich_nodes.py`, the curriculum source data, or an explicit source-grounded content pack; do not hand-edit generated HTML that the next build will replace.
 
-Before editing a node, verify its strict prerequisites. Do not assume a concept that is neither explained in the node nor reachable through a prerequisite edge. Add optional material as `background` or `related`, not as a strict prerequisite.
+A doctrinal addition must identify jurisdiction, relevant date, primary source, proposition, elements, burden, evidence, exception, procedure, remedy, and later-treatment check. A case addition must verify court, bench, date, citation, procedural posture, material facts, issue, ratio, operative order, pinpoint passage, and later treatment. A statutory addition must verify the exact version, commencement, definitions, provisos, explanations, schedules, subordinate instruments, amendments, repeal, savings, and transition.
 
-Every legal proposition needs primary authority where reasonably available. Record jurisdiction, court, date, paragraph or section, and current status. Distinguish source text, quotation, paraphrase, explanation and opinion. Do not paste course packs or commercial commentary.
-
-For visuals, include alt text and a text equivalent. For tables, keep the first column meaningful on a narrow screen. Test at 390 px width.
+Use original explanation. Quote only the minimum necessary verified passage. Do not reproduce substantial copyrighted course material.

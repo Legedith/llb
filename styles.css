@@ -256,3 +256,5 @@ dialog { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+.content-banner{max-width:1180px;margin:1.25rem auto 5rem;padding:1rem;border:1px solid var(--line,#d9d0bf);border-radius:16px;background:#fffdf7;display:grid;gap:.35rem}.content-banner strong{font-size:1rem}.content-banner span{color:var(--muted,#665f54);font-size:.85rem}.content-banner a{font-weight:750;color:var(--accent,#164f46)}

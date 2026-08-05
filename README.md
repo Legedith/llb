@@ -1,45 +1,43 @@
-# DU LL.B. Knowledge Graph
+# DU LL.B. Knowledge Graph and Study Library
 
-A mobile-first, static prerequisite graph and note index for the University of Delhi LL.B. course-material catalog.
+A mobile-first prerequisite graph and complete dedicated-page study library for the University of Delhi LL.B. course-material catalog.
 
-[Open the deployed index](https://legedith.github.io/llb/) · [Open the canonical DU catalog](https://lawfaculty.du.ac.in/Students/LL.B.-Course-Materials)
+[Open the deployed library](https://legedith.github.io/llb/) · [Find a study node](https://legedith.github.io/llb/nodes/) · [Open the canonical DU catalog](https://lawfaculty.du.ac.in/Students/LL.B.-Course-Materials)
 
-## What is here
+## Coverage
 
-- 45 papers across six terms: 25 core and 20 elective.
-- 384 modules and 3882 syllabus-derived topic nodes.
-- 26 common legal-method nodes.
-- 4043 strict prerequisite edges, validated as a directed acyclic graph.
-- Separate background and related edges, which never block progress.
-- One stable Markdown note scaffold per paper, with an anchor for every topic node.
-- Source, edition, code-alias and current-law warnings kept in node metadata.
+- 45 papers across six terms.
+- 384 modules and 3882 syllabus-derived topics.
+- 26 common legal-method foundations.
+- 4337 dedicated static study pages.
+- 4043 strict prerequisite edges, kept acyclic.
+- Every page includes orientation, plain-language explanation, outcomes, prerequisite bridge, visual decision path, full study note, issue-and-proof method, boundaries, authority map, worked problem, exam guide, revision kit, self-test, source checks, and progression links.
 
-## The key design rule
+## How it works
 
-A strict prerequisite is material a later node may assume. Background reading is useful but optional. A related link is only a cross-reference. Keeping these relations separate prevents the rich legal cross-reference network from creating false learning cycles.
+The graph index preserves readiness and progress. Opening a node now navigates to `nodes/<stable-id>/`, regardless of whether the node is ready or sequence-locked. A lock is only a learning-order signal; it never hides the study content.
 
-The DU term order is preserved for source fidelity. The learning view uses a topological order derived from strict prerequisites. These are intentionally different views.
+Strict prerequisites are the only knowledge a later node may assume. Background and related links remain non-blocking cross-references. Progress and bookmarks are stored locally in the browser under the same state key used by the graph.
+
+## Legal-content integrity
+
+The pages provide original explanatory study content generated from the node title, paper, module, prerequisite structure, domain-specific legal method, concept-specific frameworks, legislation register, and official source trail. They do not fabricate statutory quotations, case facts, holdings, or later treatment. Where the graph supplies only the name of an authority, the page explains its curricular role and supplies a rigorous case-extraction method, while requiring verification against the judgment or reliable report.
+
+The DU PDF edition identifies the syllabus, not necessarily current law. Before reliance, verify commencement, amendment, repeal or replacement, savings and transition, rules, notifications, later binding judgments, jurisdiction, forum, and limitation.
 
 ## Repository map
 
-- `index.html`, `styles.css`, `app.js`: zero-dependency mobile-first application.
-- `data/curriculum.json`: complete machine-readable graph.
-- `data/schema.md`: node and edge contract.
-- `data/validation-report.json`: generated integrity checks and known source warnings.
-- `notes/`: common foundations plus 45 subject note scaffolds.
-- `subjects/`: human-readable subject indexes.
-- `sources/README.md`: source register.
+- `index.html`, `styles.css`, `app.js`: graph and curriculum navigator.
+- `nodes/<id>/index.html`: one stable study page per graph node.
+- `node.css`, `node.js`: shared mobile-first study-page interface and progress sync.
+- `data/curriculum.json`: graph plus study-page metadata.
+- `data/content-index.json`: searchable page register.
+- `data/content-report.json`: generated coverage and quality validation.
+- `data/content-schema.md`: study-page contract.
+- `notes/`: paper and foundation source indexes linking to full pages.
+- `tools/build_site.py`: curriculum graph generator.
+- `tools/enrich_nodes.py`: dedicated study-page generator.
 
-## Source discipline
+## Rebuild
 
-The linked DU PDFs are course material, not proof of current law. Before a substantive note is treated as current, verify commencement, amendment, repeal, replacement codes, rules, notifications, binding later judgments and jurisdiction. Archive and outline-only sources are labelled rather than silently upgraded.
-
-Do not mirror or reproduce substantial copyrighted course material. Quote only what is necessary, use pinpoint attribution, prefer public-domain primary law, and write original explanations.
-
-## Local preview
-
-```bash
-python -m http.server 8000
-```
-
-Open `http://localhost:8000/`. The site uses no build step.
+The GitHub Actions workflow runs both generators, validates the graph, validates every page and required section, checks JavaScript syntax, replaces the deployed root, and commits the generated site to `main`.

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://legedith.github.io/llb/sitemap.xml
