@@ -1,0 +1,113 @@
+name: Build LL.B. knowledge graph
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-site.yml"
+      - "tools/build_site.py"
+      - "tools/build_site.py.xz.b64.part*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: llb-site-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore the checksummed generator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if compgen -G 'tools/build_site.py.xz.b64.part*' > /dev/null; then
+            cat tools/build_site.py.xz.b64.part* | base64 --decode > "${RUNNER_TEMP}/build_site.py.xz"
+            echo "bb9be767d75e5a47a63cfccf1e80560f18e8e867a9d6d06bbfcbbdcccebe834c  ${RUNNER_TEMP}/build_site.py.xz" | sha256sum --check -
+            xz --decompress --stdout "${RUNNER_TEMP}/build_site.py.xz" > tools/build_site.py
+          fi
+          echo "3be4f91b9ca5bdd25e9daee35c4b87c7bc07728d1281b095ac74b95ce86b805e  tools/build_site.py" | sha256sum --check -
+
+      - name: Generate and validate the site
+        shell: bash
+        env:
+          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/build_site.py
+          python tools/build_site.py
+          node --check "${LLB_SITE_ROOT}/app.js"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['LLB_SITE_ROOT'])
+          report = json.loads((root / 'data' / 'validation-report.json').read_text(encoding='utf-8'))
+          graph = json.loads((root / 'data' / 'curriculum.json').read_text(encoding='utf-8'))
+          stats = graph['meta']['stats']
+          expected = {
+              'subjects': 45,
+              'coreSubjects': 25,
+              'electiveSubjects': 20,
+              'modules': 384,
+              'topics': 3882,
+              'foundations': 26,
+              'learnableNodes': 3908,
+              'allNodes': 4337,
+              'strictEdges': 4043,
+              'contextEdges': 28,
+              'subjectEdges': 120,
+              'maxDepth': 477,
+              'termCounts': {'1': 5, '2': 5, '3': 7, '4': 10, '5': 10, '6': 8},
+          }
+          assert report['valid'] is True, report
+          assert report['strictCycles'] == []
+          assert report['strictTopologicalNodes'] == 3908
+          assert stats == expected, {'expected': expected, 'actual': stats}
+          required = [
+              'index.html', 'styles.css', 'app.js', 'sw.js',
+              'data/curriculum.json', 'data/schema.md',
+              'notes/foundations.md', 'notes/_template.md',
+              'sources/README.md', 'README.md', 'CONTRIBUTING.md',
+          ]
+          missing = [path for path in required if not (root / path).is_file()]
+          assert not missing, {'missing': missing}
+          print(json.dumps({'valid': True, 'stats': stats}, indent=2))
+          PY
+
+      - name: Replace the deployed root atomically
+        shell: bash
+        env:
+          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
+        run: |
+          set -euo pipefail
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='tools/' \
+            "${LLB_SITE_ROOT}/" "${GITHUB_WORKSPACE}/"
+          rm -f tools/build_site.py.xz.b64.part*
+
+      - name: Commit the generated graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Generated output is already current."
+            exit 0
+          fi
+          git commit -m "Build complete LL.B. knowledge graph"
+          git push origin HEAD:main
