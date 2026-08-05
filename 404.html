@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f1e7">
+  <meta name="description" content="A mobile-first prerequisite DAG and note index for the University of Delhi LL.B. course materials.">
+  <title>Page not found · DU LL.B. Knowledge Graph</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the knowledge graph</a>
+  <header class="site-header">
+    <div class="brand-row">
+      <button id="menuButton" class="icon-button menu-button" type="button" aria-label="Open filters" aria-controls="filterPanel" aria-expanded="false">
+        <span aria-hidden="true">☰</span>
+      </button>
+      <a class="brand" href="./" aria-label="DU LL.B. Knowledge Graph home">
+        <span class="brand-mark" aria-hidden="true">§</span>
+        <span><strong>LL.B. Graph</strong><small>DU course-material index</small></span>
+      </a>
+      <button id="aboutButton" class="icon-button" type="button" aria-label="About this index">?</button>
+    </div>
+    <form id="searchForm" class="search-shell" role="search">
+      <label class="sr-only" for="searchInput">Search subjects, topics, laws and aliases</label>
+      <span class="search-symbol" aria-hidden="true">⌕</span>
+      <input id="searchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search 4,000+ nodes…">
+      <button id="searchClear" class="search-clear" type="button" aria-label="Clear search" hidden>×</button>
+    </form>
+    <div id="searchResults" class="search-results" hidden></div>
+  </header>
+
+  <aside id="filterPanel" class="filter-panel" aria-label="Filters" aria-hidden="true">
+    <div class="panel-heading">
+      <div><span class="eyebrow">VIEW CONTROLS</span><h2>Filter the map</h2></div>
+      <button id="closeFilters" class="icon-button" type="button" aria-label="Close filters">×</button>
+    </div>
+    <fieldset>
+      <legend>Term</legend>
+      <div id="termFilters" class="chip-grid"></div>
+    </fieldset>
+    <fieldset>
+      <legend>Paper type</legend>
+      <label class="check-row"><input id="coreFilter" type="checkbox" checked> Core papers</label>
+      <label class="check-row"><input id="electiveFilter" type="checkbox" checked> Electives</label>
+    </fieldset>
+    <fieldset>
+      <legend>Node state</legend>
+      <label class="check-row"><input id="availableFilter" type="checkbox"> Ready to learn now</label>
+      <label class="check-row"><input id="bookmarkedFilter" type="checkbox"> Bookmarked only</label>
+    </fieldset>
+    <button id="resetFilters" class="button secondary full" type="button">Reset filters</button>
+  </aside>
+  <div id="panelScrim" class="scrim" hidden></div>
+
+  <main id="main" tabindex="-1">
+    <section id="learnView" class="view active" data-view="learn" aria-labelledby="learnTitle">
+      <div class="hero">
+        <p class="eyebrow">LEARN IN DEPENDENCY ORDER</p>
+        <h1 id="learnTitle">Start with what the next idea is allowed to assume.</h1>
+        <p>The syllabus order is preserved, but this path follows strict prerequisites. Background and related links never block you.</p>
+        <div id="statsStrip" class="stats-strip" aria-label="Curriculum statistics"></div>
+      </div>
+      <section class="section-block" aria-labelledby="nextTitle">
+        <div class="section-heading">
+          <div><p class="eyebrow">NEXT NODES</p><h2 id="nextTitle">Ready now</h2></div>
+          <button id="resumeButton" class="text-button" type="button">Resume last</button>
+        </div>
+        <div id="readyList" class="card-list"></div>
+      </section>
+      <section class="section-block" aria-labelledby="pathTitle">
+        <div class="section-heading">
+          <div><p class="eyebrow">GRADUAL PATH</p><h2 id="pathTitle">Your learning queue</h2></div>
+          <span id="progressLabel" class="quiet-label"></span>
+        </div>
+        <div id="learningQueue" class="timeline"></div>
+      </section>
+      <section class="section-block principle-box" aria-labelledby="edgeTitle">
+        <p class="eyebrow">EDGE DISCIPLINE</p>
+        <h2 id="edgeTitle">Three links, three meanings</h2>
+        <div class="legend-grid">
+          <div><span class="edge-key strict"></span><strong>Prerequisite</strong><p>The target may assume it. Controls order.</p></div>
+          <div><span class="edge-key background"></span><strong>Background</strong><p>Helpful, but the target must still explain itself.</p></div>
+          <div><span class="edge-key related"></span><strong>Related</strong><p>A cross-reference only. Cycles are allowed.</p></div>
+        </div>
+      </section>
+    </section>
+
+    <section id="browseView" class="view" data-view="browse" aria-labelledby="browseTitle" hidden>
+      <div class="view-intro">
+        <p class="eyebrow">SOURCE-FIDELITY VIEW</p>
+        <h1 id="browseTitle">Browse the DU syllabus</h1>
+        <p>Open a term, paper, module or topic. Every topic has a stable ID and a note anchor.</p>
+      </div>
+      <div id="browseSummary" class="filter-summary"></div>
+      <div id="catalogTree" class="catalog-tree"></div>
+    </section>
+
+    <section id="graphView" class="view" data-view="graph" aria-labelledby="graphTitle" hidden>
+      <div class="view-intro">
+        <p class="eyebrow">INFORMATION NETWORK</p>
+        <h1 id="graphTitle">See why a node comes next</h1>
+        <p>The overview collapses topic-level edges into paper dependencies. Select any node for its exact local graph.</p>
+      </div>
+      <section class="graph-panel" aria-labelledby="overviewTitle">
+        <div class="section-heading">
+          <div><p class="eyebrow">45-PAPER OVERVIEW</p><h2 id="overviewTitle">Curriculum lanes</h2></div>
+          <div class="zoom-controls" aria-label="Graph scale">
+            <button id="graphSmaller" class="icon-button" type="button" aria-label="Make graph smaller">−</button>
+            <button id="graphLarger" class="icon-button" type="button" aria-label="Make graph larger">+</button>
+          </div>
+        </div>
+        <div id="subjectGraphWrap" class="subject-graph-wrap" tabindex="0" aria-label="Scrollable subject prerequisite graph">
+          <svg id="subjectGraph" role="img" aria-labelledby="subjectGraphTitle subjectGraphDesc"></svg>
+        </div>
+        <p class="graph-note">Lines show strict paper-level prerequisites. Foundation dependencies enter from the method spine. Tap a paper to inspect it.</p>
+      </section>
+      <section class="graph-panel" aria-labelledby="focusTitle">
+        <div class="section-heading">
+          <div><p class="eyebrow">FOCUS GRAPH</p><h2 id="focusTitle">Exact prerequisites and unlocks</h2></div>
+          <button id="chooseFocus" class="text-button" type="button">Choose node</button>
+        </div>
+        <div id="focusGraph" class="focus-graph"></div>
+      </section>
+    </section>
+
+    <section id="sourcesView" class="view" data-view="sources" aria-labelledby="sourcesTitle" hidden>
+      <div class="view-intro">
+        <p class="eyebrow">PROVENANCE AND CURRENCY</p>
+        <h1 id="sourcesTitle">Know what each node rests on</h1>
+        <p>A course pack defines this initial map; it does not prove that the law remains in force. Archive, outline-only and code-conflict notes stay visible.</p>
+      </div>
+      <div class="source-callout">
+        <strong>Current-law rule</strong>
+        <p>Before relying on a note, check commencement, amendments, replacement codes, rules, notifications and binding later decisions.</p>
+      </div>
+      <div id="sourceRegister" class="source-register"></div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Primary navigation">
+    <button class="nav-item active" type="button" data-target="learn" aria-current="page"><span aria-hidden="true">↗</span><span>Learn</span></button>
+    <button class="nav-item" type="button" data-target="browse"><span aria-hidden="true">≡</span><span>Browse</span></button>
+    <button class="nav-item" type="button" data-target="graph"><span aria-hidden="true">⌘</span><span>Graph</span></button>
+    <button class="nav-item" type="button" data-target="sources"><span aria-hidden="true">¶</span><span>Sources</span></button>
+  </nav>
+
+  <dialog id="nodeDialog" class="node-dialog">
+    <div class="dialog-handle" aria-hidden="true"></div>
+    <div class="dialog-head">
+      <div id="nodeBreadcrumb" class="breadcrumb"></div>
+      <button id="closeNode" class="icon-button" type="button" aria-label="Close node">×</button>
+    </div>
+    <div id="nodeContent" class="node-content"></div>
+  </dialog>
+
+  <dialog id="aboutDialog" class="about-dialog">
+    <div class="dialog-head"><div><p class="eyebrow">ABOUT</p><h2>What this index claims</h2></div><button id="closeAbout" class="icon-button" type="button" aria-label="Close about">×</button></div>
+    <p>This is a structured starting map of the DU LL.B. course-material catalog. It distinguishes source order from prerequisite order and preserves edition warnings. The Markdown files are enrichment scaffolds, not completed legal notes.</p>
+    <p>The strict graph is validated as acyclic. Related legal ideas may still point to each other because law is a network, not a simple textbook list.</p>
+    <a class="button secondary full" href="README.md">Read repository guide</a>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="app.js" defer></script>
+</body>
+</html>

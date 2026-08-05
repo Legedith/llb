@@ -1,0 +1,17 @@
+{
+  "name": "DU LL.B. Knowledge Graph",
+  "short_name": "LL.B. Graph",
+  "description": "Mobile-first prerequisite graph and note index for DU LL.B. course materials.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f1e7",
+  "theme_color": "#f6f1e7",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

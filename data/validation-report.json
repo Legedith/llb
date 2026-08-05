@@ -1,0 +1,42 @@
+{
+  "valid": true,
+  "checks": {
+    "subjectCount": true,
+    "termDistribution": true,
+    "uniqueNodeIds": true,
+    "allStrictReferencesResolve": true,
+    "acyclicStrictGraph": true,
+    "allSourcesPresent": true,
+    "everySubjectHasModules": true,
+    "everyModuleHasTopics": true
+  },
+  "stats": {
+    "subjects": 45,
+    "coreSubjects": 25,
+    "electiveSubjects": 20,
+    "modules": 384,
+    "topics": 3882,
+    "foundations": 26,
+    "learnableNodes": 3908,
+    "allNodes": 4337,
+    "strictEdges": 4043,
+    "contextEdges": 28,
+    "subjectEdges": 120,
+    "maxDepth": 477,
+    "termCounts": {
+      "1": 5,
+      "2": 5,
+      "3": 7,
+      "4": 10,
+      "5": 10,
+      "6": 8
+    }
+  },
+  "warnings": [
+    "LB-504 is the stable catalog identity although its linked PDF labels the paper LB-604 and VI Term.",
+    "LB-501 uses the best available official DU 2025 material because the exact 2026-27 target was unavailable.",
+    "LB-4035 and LB-602 use official DU archive editions.",
+    "LB-404 and LB-4031 are course structures rather than full casebooks.",
+    "A source edition is not proof that every cited rule remains current; each substantive note requires a current-law check."
+  ]
+}
