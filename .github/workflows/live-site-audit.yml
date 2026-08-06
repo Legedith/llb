@@ -1,0 +1,212 @@
+name: Live site audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/live-site-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: External HTTP audit with curl
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p live-audit/curl live-audit/screenshots
+          cat > live-audit/targets.tsv <<'EOF'
+          root	https://legedith.github.io/llb/
+          cases	https://legedith.github.io/llb/cases/
+          maneka	https://legedith.github.io/llb/cases/sc-1978-maneka-gandhi-v-union-of-india/
+          review	https://legedith.github.io/llb/cases/review/
+          styles	https://legedith.github.io/llb/styles.css
+          case-css	https://legedith.github.io/llb/case.css
+          app-js	https://legedith.github.io/llb/app.js
+          case-js	https://legedith.github.io/llb/case.js
+          service-worker	https://legedith.github.io/llb/sw.js
+          offline	https://legedith.github.io/llb/offline.html
+          missing	https://legedith.github.io/llb/definitely-missing-live-audit/
+          EOF
+
+          printf 'name\trequested_url\thttp_code\teffective_url\tcontent_type\tsize_download\ttime_total\tsha256\n' > live-audit/curl-summary.tsv
+          while IFS=$'\t' read -r name url; do
+            [ -n "$name" ] || continue
+            header="live-audit/curl/${name}.headers.txt"
+            body="live-audit/curl/${name}.body"
+            metrics=$(curl --silent --show-error --location --compressed \
+              --connect-timeout 15 --max-time 60 \
+              --user-agent 'LLB-live-audit/1.0 GitHub-Actions' \
+              --dump-header "$header" --output "$body" \
+              --write-out '%{http_code}\t%{url_effective}\t%{content_type}\t%{size_download}\t%{time_total}' \
+              "$url" 2>"live-audit/curl/${name}.stderr.txt" || true)
+            sha=$(sha256sum "$body" 2>/dev/null | awk '{print $1}')
+            printf '%s\t%s\t%s\t%s\n' "$name" "$url" "$metrics" "$sha" >> live-audit/curl-summary.tsv
+          done < live-audit/targets.tsv
+
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          base = Path('live-audit')
+          rows = []
+          lines = (base/'curl-summary.tsv').read_text(encoding='utf-8').splitlines()
+          header = lines[0].split('\t')
+          for line in lines[1:]:
+              parts = line.split('\t')
+              parts += [''] * (len(header) - len(parts))
+              rows.append(dict(zip(header, parts)))
+
+          html_checks = {}
+          for name in ('root', 'cases', 'maneka', 'review', 'offline', 'missing'):
+              path = base/'curl'/f'{name}.body'
+              raw = path.read_bytes() if path.exists() else b''
+              text = raw.decode('utf-8', errors='replace')
+              html_checks[name] = {
+                  'bytes': len(raw),
+                  'title': (re.search(r'<title[^>]*>(.*?)</title>', text, re.I|re.S).group(1).strip()
+                            if re.search(r'<title[^>]*>(.*?)</title>', text, re.I|re.S) else ''),
+                  'stylesheets': re.findall(r'<link[^>]+rel=["\']stylesheet["\'][^>]+href=["\']([^"\']+)', text, re.I),
+                  'scripts': re.findall(r'<script[^>]+src=["\']([^"\']+)', text, re.I),
+                  'has_viewport': bool(re.search(r'<meta[^>]+name=["\']viewport["\']', text, re.I)),
+                  'has_inline_style': '<style' in text.lower(),
+                  'looks_like_graph_404': 'Skip to the knowledge graph' in text,
+              }
+          (base/'curl-report.json').write_text(json.dumps({'requests': rows, 'html': html_checks}, indent=2), encoding='utf-8')
+          print((base/'curl-summary.tsv').read_text(encoding='utf-8'))
+          print(json.dumps(html_checks, indent=2))
+          PY
+
+      - name: Install Chromium renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright@1.52.0
+          npx playwright install --with-deps chromium
+
+      - name: Render mobile and desktop screenshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > live-audit/render.mjs <<'EOF'
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          import { chromium } from 'playwright';
+
+          const targets = [
+            ['root', 'https://legedith.github.io/llb/'],
+            ['cases', 'https://legedith.github.io/llb/cases/'],
+            ['maneka', 'https://legedith.github.io/llb/cases/sc-1978-maneka-gandhi-v-union-of-india/'],
+            ['review', 'https://legedith.github.io/llb/cases/review/'],
+            ['missing', 'https://legedith.github.io/llb/definitely-missing-live-audit/'],
+          ];
+          const viewports = [
+            ['mobile', { width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true }],
+            ['desktop', { width: 1440, height: 1000, deviceScaleFactor: 1, isMobile: false, hasTouch: false }],
+          ];
+
+          await fs.mkdir('live-audit/screenshots', { recursive: true });
+          const browser = await chromium.launch({ headless: true });
+          const report = [];
+
+          for (const [viewportName, viewport] of viewports) {
+            for (const [name, url] of targets) {
+              const context = await browser.newContext({
+                viewport: { width: viewport.width, height: viewport.height },
+                deviceScaleFactor: viewport.deviceScaleFactor,
+                isMobile: viewport.isMobile,
+                hasTouch: viewport.hasTouch,
+                serviceWorkers: 'block',
+                ignoreHTTPSErrors: false,
+              });
+              const page = await context.newPage();
+              const consoleMessages = [];
+              const pageErrors = [];
+              const failedRequests = [];
+              const badResponses = [];
+              page.on('console', message => consoleMessages.push({ type: message.type(), text: message.text() }));
+              page.on('pageerror', error => pageErrors.push(String(error)));
+              page.on('requestfailed', request => failedRequests.push({ url: request.url(), failure: request.failure()?.errorText || '' }));
+              page.on('response', response => {
+                if (response.status() >= 400) badResponses.push({ status: response.status(), url: response.url() });
+              });
+
+              let navigation = {};
+              try {
+                const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                navigation = { status: response?.status() ?? null, url: page.url() };
+                await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+                await page.waitForTimeout(1500);
+              } catch (error) {
+                navigation = { status: null, url: page.url(), error: String(error) };
+              }
+
+              const pageState = await page.evaluate(() => {
+                const bodyStyle = getComputedStyle(document.body);
+                const h1 = document.querySelector('h1');
+                const header = document.querySelector('header, .site-header, .topbar');
+                const rect = document.body.getBoundingClientRect();
+                return {
+                  title: document.title,
+                  bodyTextLength: document.body?.innerText?.length || 0,
+                  bodyHtmlLength: document.body?.innerHTML?.length || 0,
+                  bodyFontFamily: bodyStyle.fontFamily,
+                  bodyFontSize: bodyStyle.fontSize,
+                  bodyBackground: bodyStyle.backgroundColor,
+                  bodyColor: bodyStyle.color,
+                  bodyWidth: rect.width,
+                  scrollWidth: document.documentElement.scrollWidth,
+                  viewportWidth: innerWidth,
+                  horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
+                  h1Text: h1?.textContent?.trim() || '',
+                  h1FontFamily: h1 ? getComputedStyle(h1).fontFamily : '',
+                  h1FontSize: h1 ? getComputedStyle(h1).fontSize : '',
+                  headerDisplay: header ? getComputedStyle(header).display : '',
+                  styleSheets: [...document.styleSheets].map(sheet => ({ href: sheet.href, rules: (() => { try { return sheet.cssRules.length; } catch { return null; } })() })),
+                  scripts: [...document.scripts].map(script => script.src).filter(Boolean),
+                  links: [...document.querySelectorAll('a[href]')].slice(0, 40).map(a => a.href),
+                };
+              }).catch(error => ({ evaluateError: String(error) }));
+
+              const screenshot = path.join('live-audit/screenshots', `${viewportName}-${name}.png`);
+              await page.screenshot({ path: screenshot, fullPage: true });
+              report.push({ viewport: viewportName, name, requestedUrl: url, navigation, pageState, consoleMessages, pageErrors, failedRequests, badResponses, screenshot });
+              await context.close();
+            }
+          }
+
+          await browser.close();
+          await fs.writeFile('live-audit/browser-report.json', JSON.stringify(report, null, 2));
+          console.log(JSON.stringify(report.map(r => ({
+            viewport: r.viewport,
+            name: r.name,
+            status: r.navigation.status,
+            finalUrl: r.navigation.url,
+            title: r.pageState.title,
+            font: r.pageState.bodyFontFamily,
+            background: r.pageState.bodyBackground,
+            stylesheets: r.pageState.styleSheets,
+            failedRequests: r.failedRequests,
+            badResponses: r.badResponses,
+            overflow: r.pageState.horizontalOverflow,
+          })), null, 2));
+          EOF
+          node live-audit/render.mjs
+
+      - name: Upload curl logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-site-audit-${{ github.run_id }}
+          path: live-audit/
+          if-no-files-found: error
+          retention-days: 14
