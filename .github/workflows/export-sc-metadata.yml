@@ -19,21 +19,56 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p sc-metadata
+          mkdir -p sc-metadata sc-export
           for year in $(seq 1950 2025); do
             url="https://indian-supreme-court-judgments.s3.amazonaws.com/metadata/parquet/year=${year}/metadata.parquet"
             echo "Downloading ${year}"
             curl --fail --location --retry 4 --retry-delay 2 "$url" -o "sc-metadata/${year}.parquet"
           done
+          python -m pip install --disable-pip-version-check --quiet duckdb
           python - <<'PY'
+          import gzip
+          import json
           from pathlib import Path
+          import duckdb
+
           files = sorted(Path('sc-metadata').glob('*.parquet'))
           assert len(files) == 76, len(files)
-          print('files', len(files), 'bytes', sum(p.stat().st_size for p in files))
+          con = duckdb.connect()
+          query = "SELECT * FROM read_parquet('sc-metadata/*.parquet', union_by_name=true, filename=true)"
+          description = con.execute(f"DESCRIBE {query}").fetchall()
+          schema = [{'name': row[0], 'type': row[1], 'null': row[2]} for row in description]
+          Path('sc-export/schema.json').write_text(json.dumps(schema, ensure_ascii=False, indent=2), encoding='utf-8')
+          names = [row[0] for row in description]
+          cursor = con.execute(query)
+          count = 0
+          with gzip.open('sc-export/supreme-court-index.jsonl.gz', 'wt', encoding='utf-8') as out:
+              while True:
+                  batch = cursor.fetchmany(2000)
+                  if not batch:
+                      break
+                  for values in batch:
+                      row = {}
+                      for name, value in zip(names, values):
+                          if hasattr(value, 'isoformat'):
+                              value = value.isoformat()
+                          row[name] = value
+                      out.write(json.dumps(row, ensure_ascii=False, default=str) + '\n')
+                      count += 1
+          report = {
+              'files': len(files),
+              'rows': count,
+              'source': 'public metadata mirror of the official Supreme Court eSCR collection',
+              'years': [1950, 2025],
+              'columns': names,
+              'parquetBytes': sum(p.stat().st_size for p in files),
+          }
+          Path('sc-export/report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(report, indent=2))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: supreme-court-metadata-1950-2025
-          path: sc-metadata/
+          name: supreme-court-index-1950-2025
+          path: sc-export/
           compression-level: 9
           retention-days: 1
