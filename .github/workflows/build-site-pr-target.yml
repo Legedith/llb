@@ -1,0 +1,38 @@
+name: PR-target repaired-site publisher
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: llb-site-repair-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: contains(github.event.pull_request.title, '[build-site]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out current main with write credentials
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Build, validate, screenshot, and publish the repaired site
+        shell: bash
+        run: bash tools/publish_repaired_site.sh
+
+      - name: Upload validation logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repaired-site-build-${{ github.run_id }}
+          path: ${{ runner.temp }}/llb-repair-evidence/
+          if-no-files-found: error
+          retention-days: 30
