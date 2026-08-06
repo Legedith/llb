@@ -1,181 +1,41 @@
-name: Build LL.B. study library
+name: Build LL.B. study library and case catalogue
 
 on:
   push:
     branches: [main]
     paths:
       - ".github/workflows/build-site.yml"
-      - "tools/build_site.py"
-      - "tools/build_site.py.xz.b64.part*"
-      - "tools/enrich_nodes.py"
-      - "tools/enrich_nodes.py.xz.b64.part*"
+      - "tools/publish_repaired_site.sh"
+      - "tools/validate_repaired_site.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: llb-site-build
-  cancel-in-progress: true
+  group: llb-site-repair-build
+  cancel-in-progress: false
 
 jobs:
   build:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Check out main
+      - name: Check out current main
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Restore the checksummed generators
+      - name: Build, validate, screenshot, and stage the repaired site
         shell: bash
-        run: |
-          set -euo pipefail
-          if compgen -G 'tools/build_site.py.xz.b64.part*' > /dev/null; then
-            cat tools/build_site.py.xz.b64.part* | base64 --decode > "${RUNNER_TEMP}/build_site.py.xz"
-            echo "bb9be767d75e5a47a63cfccf1e80560f18e8e867a9d6d06bbfcbbdcccebe834c  ${RUNNER_TEMP}/build_site.py.xz" | sha256sum --check -
-            xz --decompress --stdout "${RUNNER_TEMP}/build_site.py.xz" > tools/build_site.py
-          fi
-          echo "3be4f91b9ca5bdd25e9daee35c4b87c7bc07728d1281b095ac74b95ce86b805e  tools/build_site.py" | sha256sum --check -
-          if compgen -G 'tools/enrich_nodes.py.xz.b64.part*' > /dev/null; then
-            cat tools/enrich_nodes.py.xz.b64.part* | base64 --decode > "${RUNNER_TEMP}/enrich_nodes.py.xz"
-            echo "ba60d21d40cd219c891d45934f751a3dcb82bff66862f160360bc01bb4004803  ${RUNNER_TEMP}/enrich_nodes.py.xz" | sha256sum --check -
-            xz --decompress --stdout "${RUNNER_TEMP}/enrich_nodes.py.xz" > tools/enrich_nodes.py
-          fi
-          echo "1eab8b6cbdb3c3fce5b5c89b75bf3d0b48631fd3a98fffd4b6ce02cf41547250  tools/enrich_nodes.py" | sha256sum --check -
+        run: bash tools/publish_repaired_site.sh
 
-      - name: Generate graph and dedicated study pages
-        shell: bash
-        env:
-          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
-        run: |
-          set -euo pipefail
-          python -m py_compile tools/build_site.py tools/enrich_nodes.py
-          python tools/build_site.py
-          python tools/enrich_nodes.py --root "${LLB_SITE_ROOT}"
-          node --check "${LLB_SITE_ROOT}/app.js"
-          node --check "${LLB_SITE_ROOT}/node.js"
-
-      - name: Independently validate graph and study-content coverage
-        shell: bash
-        env:
-          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json
-          import os
-          import re
-          from pathlib import Path
-          from urllib.parse import unquote
-
-          root = Path(os.environ['LLB_SITE_ROOT'])
-          graph_report = json.loads((root / 'data' / 'validation-report.json').read_text(encoding='utf-8'))
-          graph = json.loads((root / 'data' / 'curriculum.json').read_text(encoding='utf-8'))
-          content = json.loads((root / 'data' / 'content-report.json').read_text(encoding='utf-8'))
-          index = json.loads((root / 'data' / 'content-index.json').read_text(encoding='utf-8'))
-          stats = graph['meta']['stats']
-          expected = {
-              'subjects': 45,
-              'coreSubjects': 25,
-              'electiveSubjects': 20,
-              'modules': 384,
-              'topics': 3882,
-              'foundations': 26,
-              'learnableNodes': 3908,
-              'allNodes': 4337,
-              'strictEdges': 4043,
-              'contextEdges': 28,
-              'subjectEdges': 120,
-              'maxDepth': 477,
-              'termCounts': {'1': 5, '2': 5, '3': 7, '4': 10, '5': 10, '6': 8},
-          }
-          assert graph_report['valid'] is True, graph_report
-          assert all(graph_report['checks'].values()), graph_report['checks']
-          assert graph_report['stats'] == expected, {'expected': expected, 'actual': graph_report['stats']}
-          assert stats == expected, {'expected': expected, 'actual': stats}
-
-          learnable = {node_id for node_id, node in graph['nodes'].items() if node.get('learnable')}
-          order = graph['learningOrder']
-          position = {node_id: index for index, node_id in enumerate(order)}
-          strict_edges = [edge for edge in graph['edges'] if edge['type'] == 'prerequisite']
-          assert len(order) == expected['learnableNodes'] and set(order) == learnable
-          assert len(strict_edges) == expected['strictEdges']
-          assert all(position[edge['from']] < position[edge['to']] for edge in strict_edges)
-
-          assert content['valid'] is True, content
-          assert all(content['checks'].values()), content['checks']
-          assert content['completeCoverage'] is True
-          assert content['nodeCount'] == expected['allNodes']
-          assert content['pageCount'] == expected['allNodes']
-          assert content['learnablePageCount'] == expected['learnableNodes']
-          assert content['wordCounts']['minimum'] >= 1800, content['wordCounts']
-          assert content['wordCounts']['average'] >= 2400, content['wordCounts']
-          assert len(index) == expected['allNodes']
-          assert len({row['id'] for row in index}) == expected['allNodes']
-          assert {row['id'] for row in index} == set(graph['nodes'])
-          assert graph['meta']['content']['dedicatedPages'] == expected['allNodes']
-          assert graph['meta']['content']['locksHideContent'] is False
-
-          required_sections = content['requiredSections']
-          forbidden = ('enrichment queue', 'todo', 'coming soon', 'placeholder content', 'lorem ipsum')
-          word_re = re.compile(r"\b[\w’'-]+\b")
-          for node_id, node in graph['nodes'].items():
-              page = root / 'nodes' / node_id / 'index.html'
-              assert page.is_file(), node_id
-              text = page.read_text(encoding='utf-8')
-              assert f'data-node-id="{node_id}"' in text
-              assert all(f'id="{section_id}"' in text for section_id in required_sections), node_id
-              plain = re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>', ' ', text, flags=re.I | re.S)
-              minimum = 1050 if node.get('kind') in {'topic', 'foundation'} or node.get('learnable') else 900
-              assert len(word_re.findall(plain)) >= minimum, node_id
-              lower = text.lower()
-              assert not any(marker in lower for marker in forbidden), node_id
-              for linked_id in re.findall(r'href="\.\./\.\./nodes/([^"/]+)/"', text):
-                  target = unquote(linked_id)
-                  assert target in graph['nodes'], (node_id, target)
-                  assert (root / 'nodes' / target / 'index.html').is_file(), (node_id, target)
-
-          app = (root / 'app.js').read_text(encoding='utf-8')
-          assert 'window.location.assign(`nodes/${encodeURIComponent(id)}/`);' in app
-          assert 'Every graph node has a dedicated study page' in (root / 'index.html').read_text(encoding='utf-8')
-          required_files = [
-              'index.html', 'styles.css', 'app.js', 'sw.js', 'node.css', 'node.js',
-              'data/curriculum.json', 'data/schema.md', 'data/validation-report.json',
-              'data/content-index.json', 'data/content-report.json', 'data/content-schema.md',
-              'nodes/index.html', 'notes/foundations.md', 'notes/_template.md',
-              'sources/README.md', 'README.md', 'CONTRIBUTING.md', 'sitemap.xml',
-              'robots.txt', '.nojekyll',
-          ]
-          missing = [path for path in required_files if not (root / path).is_file()]
-          assert not missing, {'missing': missing}
-          print(json.dumps({'valid': True, 'graph': stats, 'content': content['wordCounts'], 'pages': content['pageCount']}, indent=2))
-          PY
-
-      - name: Replace the deployed root atomically
-        shell: bash
-        env:
-          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
-        run: |
-          set -euo pipefail
-          rsync -a --delete \
-            --exclude='.git/' \
-            --exclude='.github/' \
-            --exclude='tools/' \
-            "${LLB_SITE_ROOT}/" "${GITHUB_WORKSPACE}/"
-          rm -f tools/build_site.py.xz.b64.part* tools/enrich_nodes.py.xz.b64.part*
-
-      - name: Commit the generated study library
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "Generated output is already current."
-            exit 0
-          fi
-          git commit -m "Build complete LL.B. study library"
-          git push origin HEAD:main
+      - name: Upload validation logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repaired-site-build-${{ github.run_id }}
+          path: ${{ runner.temp }}/llb-repair-evidence/
+          if-no-files-found: error
+          retention-days: 30
