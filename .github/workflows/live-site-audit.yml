@@ -2,28 +2,24 @@ name: Live site audit
 
 on:
   workflow_dispatch:
+  page_build:
+  workflow_run:
+    workflows: ["pages build and deployment"]
+    types: [completed]
   schedule:
     - cron: "*/5 * * * *"
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/live-site-audit.yml"
-      - ".github/live-audit-trigger"
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/live-site-audit.yml"
-      - ".github/live-audit-trigger"
 
 permissions:
   contents: read
 
 jobs:
   audit:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - name: Let the Pages CDN settle
+        run: sleep 30
 
       - name: External curl verification
         shell: bash
@@ -47,7 +43,7 @@ jobs:
           while IFS=$'\t' read -r name url; do
             body="live-audit/curl/$name.body"
             metrics=$(curl -sS -L --compressed --connect-timeout 15 --max-time 60 \
-              -A 'LLB-live-audit/2.1' -D "live-audit/curl/$name.headers.txt" -o "$body" \
+              -A 'LLB-live-audit/3.0' -D "live-audit/curl/$name.headers.txt" -o "$body" \
               -w '%{http_code}\t%{url_effective}\t%{content_type}\t%{size_download}\t%{time_total}' "$url" \
               2>"live-audit/curl/$name.stderr.txt" || true)
             sha=$(sha256sum "$body" 2>/dev/null | awk '{print $1}')
@@ -55,14 +51,14 @@ jobs:
           done < live-audit/targets.tsv
           cat live-audit/curl-summary.tsv
 
-      - name: Install Playwright Chromium
+      - name: Install Chromium renderer
         shell: bash
         run: |
           set -euo pipefail
           npm install --no-save playwright@1.52.0
           npx playwright install --with-deps chromium
 
-      - name: Render fresh mobile and desktop screenshots
+      - name: Render mobile and desktop screenshots
         shell: bash
         run: |
           set -euo pipefail
@@ -99,7 +95,7 @@ jobs:
                 const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
                 status = response?.status() ?? null;
                 await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-                await page.waitForTimeout(1200);
+                await page.waitForTimeout(1500);
               } catch (e) { error = String(e); }
               const state = await page.evaluate(() => {
                 const style = getComputedStyle(document.body);
@@ -130,7 +126,7 @@ jobs:
           EOF
           node live-audit/render.mjs
 
-      - name: Build concise audit report
+      - name: Build concise report
         if: always()
         shell: bash
         run: |
@@ -159,8 +155,7 @@ jobs:
                   'graph404': 'Skip to the knowledge graph' in text,
               }
           browser = json.loads((base/'browser-report.json').read_text()) if (base/'browser-report.json').exists() else []
-          report = {'curl': rows, 'html': html, 'browser': browser}
-          (base/'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+          (base/'report.json').write_text(json.dumps({'curl': rows, 'html': html, 'browser': browser}, indent=2), encoding='utf-8')
           PY
 
       - name: Upload audit evidence
