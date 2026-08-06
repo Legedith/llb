@@ -1,0 +1,87 @@
+name: Export DU case citations for casebook build
+
+on:
+  push:
+    branches: [agent/case-catalogue]
+    paths:
+      - ".github/workflows/export-du-case-citations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PDF text tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends poppler-utils
+      - name: Download course materials and extract citation contexts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p du-case-export/pdfs du-case-export/text
+          python - <<'PY'
+          import json, pathlib, re, subprocess, urllib.parse
+
+          root = pathlib.Path('.')
+          graph = json.loads((root/'data/curriculum.json').read_text(encoding='utf-8'))
+          subjects = graph['subjects']
+          download_report = []
+          for subject in subjects:
+              sid = subject['id']
+              url = subject.get('source') or ''
+              if not url.lower().endswith('.pdf') and '.pdf' not in url.lower():
+                  download_report.append({'subjectId': sid, 'url': url, 'status': 'not-direct-pdf'})
+                  continue
+              pdf = root/'du-case-export'/'pdfs'/f'{sid}.pdf'
+              cmd = ['curl','--fail','--location','--retry','3','--connect-timeout','20','--max-time','180',url,'-o',str(pdf)]
+              result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+              if result.returncode != 0 or not pdf.exists() or pdf.stat().st_size < 1000:
+                  download_report.append({'subjectId': sid, 'url': url, 'status': 'download-failed', 'error': result.stderr[-500:]})
+                  pdf.unlink(missing_ok=True)
+                  continue
+              txt = root/'du-case-export'/'text'/f'{sid}.txt'
+              proc = subprocess.run(['pdftotext','-layout',str(pdf),str(txt)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+              status = 'ok' if proc.returncode == 0 and txt.exists() else 'text-failed'
+              download_report.append({'subjectId': sid, 'url': url, 'status': status, 'bytes': pdf.stat().st_size})
+
+          (root/'du-case-export'/'download-report.json').write_text(json.dumps(download_report, indent=2), encoding='utf-8')
+
+          party = re.compile(r"\b([A-Z][A-Za-z0-9À-ž.&'’()\-/ ]{2,110}?)\s+(?:v\.?|vs\.?|versus)\s+([A-Z][A-Za-z0-9À-ž.&'’()\-/ ]{2,130})", re.I)
+          cite = re.compile(r"(?:\(\d{4}\)\s*\d+\s*(?:SCC|SCR|SCALE|AIR|CriLJ|Comp Cas)[^;,.\n]{0,45}|AIR\s*\d{4}\s*(?:SC|Bom|Cal|Del|Mad|All|Ker|Kant|Raj|MP|Pat)[^;,.\n]{0,35}|\d{4}\s+INSC\s+\d+|\[\d{4}\]\s*\d+\s*S\.C\.R\.\s*\d+)", re.I)
+          rows=[]
+          for txt in sorted((root/'du-case-export'/'text').glob('*.txt')):
+              sid=txt.stem
+              lines=txt.read_text(encoding='utf-8', errors='ignore').splitlines()
+              for i,line in enumerate(lines):
+                  normalized=' '.join(line.split())
+                  if not normalized or len(normalized)>500: continue
+                  if not party.search(normalized) and not cite.search(normalized): continue
+                  context=' '.join(' '.join(x.split()) for x in lines[max(0,i-2):min(len(lines),i+3)] if x.strip())
+                  matches=[]
+                  for m in party.finditer(context):
+                      title=f"{m.group(1).strip()} v. {m.group(2).strip()}"
+                      title=re.sub(r'\s+',' ',title).strip(' -:;,')
+                      if 8 <= len(title) <= 260: matches.append(title)
+                  citations=list(dict.fromkeys(m.group(0).strip() for m in cite.finditer(context)))
+                  if matches or citations:
+                      rows.append({'subjectId':sid,'line':i+1,'titles':list(dict.fromkeys(matches)),'citations':citations,'context':context[:1200]})
+          # Exact de-duplication only. Preserve repeated contexts because they carry node-local pedagogy.
+          unique=[]; seen=set()
+          for row in rows:
+              key=(row['subjectId'],tuple(row['titles']),tuple(row['citations']),row['context'])
+              if key in seen: continue
+              seen.add(key); unique.append(row)
+          (root/'du-case-export'/'citation-contexts.json').write_text(json.dumps(unique, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps({'subjects':len(subjects),'downloaded':sum(r['status']=='ok' for r in download_report),'contexts':len(unique)}, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: du-case-citation-contexts
+          path: du-case-export/
+          compression-level: 9
+          retention-days: 1
