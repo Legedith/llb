@@ -2,6 +2,8 @@ name: Live site audit
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
   pull_request:
     branches: [main]
     paths:
@@ -45,7 +47,7 @@ jobs:
           while IFS=$'\t' read -r name url; do
             body="live-audit/curl/$name.body"
             metrics=$(curl -sS -L --compressed --connect-timeout 15 --max-time 60 \
-              -A 'LLB-live-audit/2.0' -D "live-audit/curl/$name.headers.txt" -o "$body" \
+              -A 'LLB-live-audit/2.1' -D "live-audit/curl/$name.headers.txt" -o "$body" \
               -w '%{http_code}\t%{url_effective}\t%{content_type}\t%{size_download}\t%{time_total}' "$url" \
               2>"live-audit/curl/$name.stderr.txt" || true)
             sha=$(sha256sum "$body" 2>/dev/null | awk '{print $1}')
