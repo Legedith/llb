@@ -8,6 +8,9 @@ on:
       - "tools/publish_repaired_site.sh"
       - "tools/repair-assets/**"
       - "tools/validate_repaired_site.py"
+  workflow_run:
+    workflows: ["pages-build-deployment"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +22,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -28,12 +31,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Decide whether the generated repair is already present
+        id: guard
+        shell: bash
+        run: |
+          if [ -f deploy-marker.txt ] && grep -qx 'LLB_STATIC_REPAIR_20260807_V3' deploy-marker.txt; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            echo 'The repaired generated root is already on main.'
+          else
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build, validate, screenshot, and publish the repaired site
+        if: steps.guard.outputs.build == 'true'
         shell: bash
         run: bash tools/publish_repaired_site.sh
 
       - name: Upload validation logs and screenshots
-        if: always()
+        if: always() && steps.guard.outputs.build == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: repaired-site-build-${{ github.run_id }}
