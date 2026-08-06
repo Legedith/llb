@@ -1,0 +1,39 @@
+name: Export Supreme Court metadata for casebook build
+
+on:
+  push:
+    branches: [agent/case-catalogue]
+    paths:
+      - ".github/workflows/export-sc-metadata.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download public Supreme Court metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sc-metadata
+          for year in $(seq 1950 2025); do
+            url="https://indian-supreme-court-judgments.s3.amazonaws.com/metadata/parquet/year=${year}/metadata.parquet"
+            echo "Downloading ${year}"
+            curl --fail --location --retry 4 --retry-delay 2 "$url" -o "sc-metadata/${year}.parquet"
+          done
+          python - <<'PY'
+          from pathlib import Path
+          files = sorted(Path('sc-metadata').glob('*.parquet'))
+          assert len(files) == 76, len(files)
+          print('files', len(files), 'bytes', sum(p.stat().st_size for p in files))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: supreme-court-metadata-1950-2025
+          path: sc-metadata/
+          compression-level: 9
+          retention-days: 1
