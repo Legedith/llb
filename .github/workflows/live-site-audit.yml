@@ -71,10 +71,10 @@ jobs:
               path = base/'curl'/f'{name}.body'
               raw = path.read_bytes() if path.exists() else b''
               text = raw.decode('utf-8', errors='replace')
+              title_match = re.search(r'<title[^>]*>(.*?)</title>', text, re.I|re.S)
               html_checks[name] = {
                   'bytes': len(raw),
-                  'title': (re.search(r'<title[^>]*>(.*?)</title>', text, re.I|re.S).group(1).strip()
-                            if re.search(r'<title[^>]*>(.*?)</title>', text, re.I|re.S) else ''),
+                  'title': title_match.group(1).strip() if title_match else '',
                   'stylesheets': re.findall(r'<link[^>]+rel=["\']stylesheet["\'][^>]+href=["\']([^"\']+)', text, re.I),
                   'scripts': re.findall(r'<script[^>]+src=["\']([^"\']+)', text, re.I),
                   'has_viewport': bool(re.search(r'<meta[^>]+name=["\']viewport["\']', text, re.I)),
@@ -210,3 +210,5 @@ jobs:
           path: live-audit/
           if-no-files-found: error
           retention-days: 14
+
+# Triggered after workflow registration so GitHub Actions sees the push.
