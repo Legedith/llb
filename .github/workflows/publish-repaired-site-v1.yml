@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/publish-repaired-site-v1.yml"
+      - "tools/publish_repaired_site.sh"
+      - "tools/validate_repaired_site.py"
   workflow_dispatch:
 
 permissions:
@@ -25,224 +27,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Restore the staged, checksummed repair source
+      - name: Build, validate, screenshot, and stage the repaired site
         shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin repair/full-case-catalogue-routing:refs/remotes/origin/repair/full-case-catalogue-routing
-          stage="${RUNNER_TEMP}/repair-stage"
-          mkdir -p "$stage"
-          git archive --format=tar origin/repair/full-case-catalogue-routing \
-            'tools/site-repair-core.tar.xz.b64.part*' | tar -xf - -C "$stage"
-          cat "$stage"/tools/site-repair-core.tar.xz.b64.part* | base64 --decode > "${RUNNER_TEMP}/site-repair-core.tar.xz"
-          sha256sum "${RUNNER_TEMP}/site-repair-core.tar.xz" | tee "${RUNNER_TEMP}/repair-archive.sha256"
-          xz --test "${RUNNER_TEMP}/site-repair-core.tar.xz"
-          tar -tJf "${RUNNER_TEMP}/site-repair-core.tar.xz" | tee "${RUNNER_TEMP}/repair-archive-files.txt"
-          tar -xJf "${RUNNER_TEMP}/site-repair-core.tar.xz" -C "$GITHUB_WORKSPACE"
-          test -f tools/build_site.py
-          test -f tools/enrich_nodes.py
-          test -f tools/build_cases.py
-          test -f casebook/relationships.json
-          test -f casebook/SOURCE-MANIFEST.sha256
-          python -m py_compile tools/build_site.py tools/enrich_nodes.py tools/build_cases.py
-          sha256sum --check casebook/SOURCE-MANIFEST.sha256
-          find tools casebook -type d -name __pycache__ -prune -exec rm -rf {} +
+        run: bash tools/publish_repaired_site.sh
 
-      - name: Generate the full study and case site
-        shell: bash
-        env:
-          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
-        run: |
-          set -euo pipefail
-          python tools/build_site.py
-          python tools/enrich_nodes.py --root "$LLB_SITE_ROOT"
-          python tools/build_cases.py --root "$LLB_SITE_ROOT" --catalogue casebook
-          node --check "$LLB_SITE_ROOT/app.js"
-          node --check "$LLB_SITE_ROOT/node.js"
-          node --check "$LLB_SITE_ROOT/case.js"
-          node --check "$LLB_SITE_ROOT/sw.js"
-
-      - name: Independently validate content, routes, assets, and responsive markup
-        shell: bash
-        env:
-          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
-        run: |
-          set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/evidence"
-          python - <<'PY' | tee "${RUNNER_TEMP}/evidence/static-validation.json"
-          import html
-          import json
-          import os
-          import re
-          from html.parser import HTMLParser
-          from pathlib import Path
-          from urllib.parse import unquote, urlsplit
-
-          root = Path(os.environ['LLB_SITE_ROOT']).resolve()
-          graph = json.loads((root/'data/curriculum.json').read_text(encoding='utf-8'))
-          graph_report = json.loads((root/'data/validation-report.json').read_text(encoding='utf-8'))
-          content = json.loads((root/'data/content-report.json').read_text(encoding='utf-8'))
-          cases = json.loads((root/'data/case-coverage-report.json').read_text(encoding='utf-8'))
-          case_index = json.loads((root/'data/cases-index.json').read_text(encoding='utf-8'))
-
-          expected_graph = {
-            'subjects':45,'coreSubjects':25,'electiveSubjects':20,'modules':384,'topics':3882,
-            'foundations':26,'learnableNodes':3908,'allNodes':4337,'strictEdges':4043,
-            'contextEdges':28,'subjectEdges':120,'maxDepth':477,
-            'termCounts':{'1':5,'2':5,'3':7,'4':10,'5':10,'6':8},
-          }
-          expected_cases = {
-            'cases':254,'nodeEdges':665,'mappedNodes':548,'developmentLinks':119,
-            'directTreatmentEdges':0,'trails':27,'subjectsCovered':45,
-            'directOfficialSources':6,'officialDiscoverySources':234,
-            'paragraphPinnedCases':0,'nodePagesPatched':4337,'nodePagesWithCases':819,
-          }
-          assert graph_report['valid'] and all(graph_report['checks'].values())
-          assert graph['meta']['stats'] == expected_graph
-          assert content['valid'] and all(content['checks'].values()) and content['completeCoverage']
-          assert content['pageCount'] == 4337 and content['wordCounts']['minimum'] >= 2500
-          assert cases['valid'] and all(cases['checks'].values()), cases
-          for key, value in expected_cases.items():
-              assert cases['stats'][key] == value, (key, cases['stats'][key], value)
-          assert len(case_index) == 254
-
-          required = (
-            'index.html','styles.css','app.js','node.css','node.js','case.css','case.js','sw.js',
-            '404.html','offline.html','cases/index.html',
-            'cases/sc-1978-maneka-gandhi-v-union-of-india/index.html',
-            'cases/trails/index.html','cases/compare/index.html','cases/review/index.html',
-            'cases/method/index.html','data/curriculum.json','data/content-index.json',
-            'data/cases-index.json','data/cases-full.json','data/case-node-edges.json',
-            'data/case-trails.json','sitemap.xml','robots.txt','.nojekyll',
-          )
-          missing = [path for path in required if not (root/path).is_file()]
-          assert not missing, missing
-
-          home = (root/'index.html').read_text(encoding='utf-8')
-          catalogue = (root/'cases/index.html').read_text(encoding='utf-8')
-          not_found = (root/'404.html').read_text(encoding='utf-8')
-          worker = (root/'sw.js').read_text(encoding='utf-8')
-          assert 'href="cases/"' in home and 'Open case catalogue' in home
-          assert 'Indian Law Case Catalogue' in catalogue and '../case.css' in catalogue
-          assert '<style>' in not_found and '/llb/cases/' in not_found
-          assert 'offline.html' in worker and 'du-llb-cases-v2' in worker
-          assert "caches.match('./index.html')" not in worker
-
-          class Parser(HTMLParser):
-              def __init__(self):
-                  super().__init__(); self.refs=[]; self.ids=[]; self.viewport=False; self.styles=[]
-              def handle_starttag(self, tag, attrs):
-                  values=dict(attrs)
-                  if values.get('id'): self.ids.append(values['id'])
-                  if tag=='meta' and values.get('name')=='viewport': self.viewport=True
-                  if tag=='link' and values.get('href'):
-                      self.refs.append(values['href'])
-                      if 'stylesheet' in (values.get('rel') or ''): self.styles.append(values['href'])
-                  if tag=='script' and values.get('src'): self.refs.append(values['src'])
-                  if tag=='a' and values.get('href'): self.refs.append(values['href'])
-              def handle_startendtag(self, tag, attrs): self.handle_starttag(tag, attrs)
-
-          broken=[]; duplicate_ids=[]; missing_viewport=[]; missing_style=[]; local_refs=0
-          html_files=list(root.rglob('*.html'))
-          for page in html_files:
-              text=page.read_text(encoding='utf-8', errors='replace')
-              parser=Parser(); parser.feed(text)
-              if not parser.viewport: missing_viewport.append(str(page.relative_to(root)))
-              if len(parser.ids)!=len(set(parser.ids)): duplicate_ids.append(str(page.relative_to(root)))
-              if page.name not in {'404.html','offline.html'} and not parser.styles and '<style' not in text:
-                  missing_style.append(str(page.relative_to(root)))
-              for raw in parser.refs:
-                  ref=html.unescape(raw).strip()
-                  if not ref or '${' in ref or ref.startswith(('#','http:','https:','mailto:','tel:','javascript:','data:')):
-                      continue
-                  path=unquote(urlsplit(ref).path)
-                  if not path: continue
-                  local_refs += 1
-                  if path.startswith('/llb/'):
-                      target=root/path.removeprefix('/llb/')
-                  elif path.startswith('/'):
-                      continue
-                  else:
-                      target=(page.parent/path).resolve()
-                      try: target.relative_to(root)
-                      except ValueError: continue
-                  if path.endswith('/'): target=target/'index.html'
-                  elif target.is_dir(): target=target/'index.html'
-                  if not target.exists(): broken.append((str(page.relative_to(root)),ref))
-          assert len(html_files) >= 4670, len(html_files)
-          assert not broken[:20], broken[:20]
-          assert not duplicate_ids, duplicate_ids[:20]
-          assert not missing_viewport, missing_viewport[:20]
-          assert not missing_style, missing_style[:20]
-          result={
-            'valid':True,'htmlPages':len(html_files),'studyPages':content['pageCount'],
-            'cases':cases['stats']['cases'],'caseNodeEdges':cases['stats']['nodeEdges'],
-            'mappedNodes':cases['stats']['mappedNodes'],'localReferences':local_refs,
-            'brokenLinks':len(broken),'duplicateIds':len(duplicate_ids),
-            'missingViewport':len(missing_viewport),'missingStyles':len(missing_style),
-          }
-          print(json.dumps(result, indent=2))
-          PY
-
-      - name: Render local mobile and desktop screenshots
-        shell: bash
-        env:
-          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
-        run: |
-          set -euo pipefail
-          evidence="${RUNNER_TEMP}/evidence"
-          chrome="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
-          test -n "$chrome"
-          "$chrome" --version | tee "$evidence/chrome-version.txt"
-          python -m http.server 8765 --directory "$LLB_SITE_ROOT" >"$evidence/http-server.log" 2>&1 &
-          server_pid=$!
-          trap 'kill $server_pid 2>/dev/null || true' EXIT
-          for n in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/cases/ >/dev/null && break; sleep 1; done
-          for item in root cases maneka review missing; do
-            case "$item" in
-              root) path='/' ;;
-              cases) path='/cases/' ;;
-              maneka) path='/cases/sc-1978-maneka-gandhi-v-union-of-india/' ;;
-              review) path='/cases/review/' ;;
-              missing) path='/definitely-missing-local-audit/' ;;
-            esac
-            for spec in mobile:390,844 desktop:1440,1000; do
-              label=${spec%%:*}; size=${spec#*:}
-              "$chrome" --headless=new --no-sandbox --disable-dev-shm-usage --hide-scrollbars \
-                --window-size="$size" --virtual-time-budget=4000 \
-                --screenshot="$evidence/${label}-${item}.png" "http://127.0.0.1:8765${path}" \
-                >"$evidence/${label}-${item}.chrome.log" 2>&1
-            done
-          done
-          kill "$server_pid" 2>/dev/null || true
-          trap - EXIT
-          file "$evidence"/*.png
-
-      - name: Commit the exact generated site to a staging branch
-        shell: bash
-        env:
-          LLB_SITE_ROOT: ${{ runner.temp }}/llb-site
-        run: |
-          set -euo pipefail
-          rsync -a --delete \
-            --exclude='.git/' \
-            --exclude='.github/' \
-            --exclude='tools/' \
-            --exclude='casebook/' \
-            "$LLB_SITE_ROOT/" "$GITHUB_WORKSPACE/"
-          find tools casebook -type d -name __pycache__ -prune -exec rm -rf {} +
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m "Build validated styled LL.B. case catalogue" || true
-          git push --force origin HEAD:refs/heads/generated/site-repair-live
-          git rev-parse HEAD | tee "${RUNNER_TEMP}/evidence/generated-commit.txt"
-
-      - name: Upload build evidence and screenshots
+      - name: Upload validation logs and screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: repaired-site-build-${{ github.run_id }}
-          path: ${{ runner.temp }}/evidence/
+          path: ${{ runner.temp }}/llb-repair-evidence/
           if-no-files-found: error
           retention-days: 30
