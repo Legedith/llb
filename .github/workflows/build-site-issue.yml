@@ -1,0 +1,37 @@
+name: Issue-triggered repaired-site publisher
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: llb-site-repair-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.title, '[build-site]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build, validate, screenshot, and publish the repaired site
+        shell: bash
+        run: bash tools/publish_repaired_site.sh
+
+      - name: Upload validation logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repaired-site-build-${{ github.run_id }}
+          path: ${{ runner.temp }}/llb-repair-evidence/
+          if-no-files-found: error
+          retention-days: 30
