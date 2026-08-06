@@ -1,0 +1,197 @@
+name: External live-site evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/live-audit-trigger"
+      - ".github/workflows/live-site-audit-pr.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: External curl audit
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p live-audit/curl live-audit/screenshots
+          cat > live-audit/targets.tsv <<'EOF'
+          root	https://legedith.github.io/llb/
+          cases	https://legedith.github.io/llb/cases/
+          maneka	https://legedith.github.io/llb/cases/sc-1978-maneka-gandhi-v-union-of-india/
+          review	https://legedith.github.io/llb/cases/review/
+          styles	https://legedith.github.io/llb/styles.css
+          case-css	https://legedith.github.io/llb/case.css
+          app-js	https://legedith.github.io/llb/app.js
+          case-js	https://legedith.github.io/llb/case.js
+          service-worker	https://legedith.github.io/llb/sw.js
+          offline	https://legedith.github.io/llb/offline.html
+          missing	https://legedith.github.io/llb/definitely-missing-live-audit/
+          EOF
+          printf 'name\trequested\tcode\teffective\ttype\tbytes\ttime\tsha256\n' > live-audit/curl-summary.tsv
+          while IFS=$'\t' read -r name url; do
+            body="live-audit/curl/$name.body"
+            metrics=$(curl -sS -L --compressed --retry 2 --retry-delay 2 --connect-timeout 15 --max-time 60 \
+              -A 'LLB-external-evidence/1.0' -D "live-audit/curl/$name.headers.txt" -o "$body" \
+              -w '%{http_code}\t%{url_effective}\t%{content_type}\t%{size_download}\t%{time_total}' "$url" \
+              2>"live-audit/curl/$name.stderr.txt" || true)
+            sha=$(sha256sum "$body" 2>/dev/null | awk '{print $1}')
+            printf '%s\t%s\t%s\t%s\n' "$name" "$url" "$metrics" "$sha" >> live-audit/curl-summary.tsv
+          done < live-audit/targets.tsv
+          cat live-audit/curl-summary.tsv
+
+      - name: Prepare system Chrome
+        id: browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME"
+          echo "chrome=$CHROME" >> "$GITHUB_OUTPUT"
+          "$CHROME" --version | tee live-audit/chrome-version.txt
+          npm install --no-save --no-audit --no-fund playwright-core@1.52.0
+
+      - name: Render screenshots and inspect loaded assets
+        if: always() && steps.browser.outcome == 'success'
+        shell: bash
+        env:
+          CHROME_BIN: ${{ steps.browser.outputs.chrome }}
+        run: |
+          set -euo pipefail
+          cat > live-audit/render.mjs <<'EOF'
+          import fs from 'node:fs/promises';
+          import { chromium } from 'playwright-core';
+
+          const targets = [
+            ['root', 'https://legedith.github.io/llb/'],
+            ['cases', 'https://legedith.github.io/llb/cases/'],
+            ['maneka', 'https://legedith.github.io/llb/cases/sc-1978-maneka-gandhi-v-union-of-india/'],
+            ['review', 'https://legedith.github.io/llb/cases/review/'],
+            ['missing', 'https://legedith.github.io/llb/definitely-missing-live-audit/'],
+          ];
+          const sizes = [
+            ['mobile', { width: 390, height: 844 }, true],
+            ['desktop', { width: 1440, height: 1000 }, false],
+          ];
+          const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+          const report = [];
+          for (const [size, viewport, isMobile] of sizes) {
+            for (const [name, requested] of targets) {
+              const context = await browser.newContext({ viewport, isMobile, hasTouch: isMobile, serviceWorkers: 'block' });
+              const page = await context.newPage();
+              const failed = [], bad = [], consoleMessages = [], pageErrors = [];
+              page.on('requestfailed', request => failed.push({ url: request.url(), error: request.failure()?.errorText || '' }));
+              page.on('response', response => { if (response.status() >= 400) bad.push({ status: response.status(), url: response.url() }); });
+              page.on('console', message => consoleMessages.push({ type: message.type(), text: message.text() }));
+              page.on('pageerror', error => pageErrors.push(String(error)));
+              let status = null, error = '';
+              try {
+                const response = await page.goto(requested, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                status = response?.status() ?? null;
+                await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+                await page.waitForTimeout(1200);
+              } catch (exception) { error = String(exception); }
+              const state = await page.evaluate(() => {
+                const body = document.body, style = getComputedStyle(body), h1 = document.querySelector('h1');
+                return {
+                  title: document.title,
+                  h1: h1?.textContent?.trim() || '',
+                  textLength: body?.innerText?.length || 0,
+                  font: style.fontFamily,
+                  fontSize: style.fontSize,
+                  background: style.backgroundColor,
+                  color: style.color,
+                  h1Font: h1 ? getComputedStyle(h1).fontFamily : '',
+                  h1Size: h1 ? getComputedStyle(h1).fontSize : '',
+                  viewportWidth: innerWidth,
+                  scrollWidth: document.documentElement.scrollWidth,
+                  overflow: document.documentElement.scrollWidth > innerWidth + 2,
+                  stylesheets: [...document.styleSheets].map(sheet => ({ href: sheet.href, rules: (() => { try { return sheet.cssRules.length; } catch { return null; } })() })),
+                  scripts: [...document.scripts].map(script => script.src).filter(Boolean),
+                  graph404: body?.innerText?.includes('Skip to the knowledge graph') || false,
+                };
+              }).catch(exception => ({ evaluateError: String(exception) }));
+              const screenshot = `live-audit/screenshots/${size}-${name}.png`;
+              await page.screenshot({ path: screenshot, fullPage: true });
+              await fs.writeFile(`live-audit/screenshots/${size}-${name}.html`, await page.content());
+              report.push({ size, name, requested, finalUrl: page.url(), status, error, state, failed, bad, consoleMessages, pageErrors, screenshot });
+              await context.close();
+            }
+          }
+          await browser.close();
+          await fs.writeFile('live-audit/browser-report.json', JSON.stringify(report, null, 2));
+          console.log(JSON.stringify(report.map(x => ({ size: x.size, name: x.name, status: x.status, title: x.state.title, h1: x.state.h1, font: x.state.font, background: x.state.background, stylesheets: x.state.stylesheets, failed: x.failed, bad: x.bad, overflow: x.state.overflow, graph404: x.state.graph404 })), null, 2));
+          EOF
+          node live-audit/render.mjs
+
+      - name: Assemble report
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          base = Path('live-audit')
+          rows = []
+          p = base/'curl-summary.tsv'
+          if p.exists():
+              lines = p.read_text(encoding='utf-8').splitlines()
+              keys = lines[0].split('\t')
+              for line in lines[1:]:
+                  values = line.split('\t') + [''] * len(keys)
+                  rows.append(dict(zip(keys, values)))
+          html = {}
+          for name in ('root','cases','maneka','review','offline','missing'):
+              f = base/'curl'/f'{name}.body'
+              text = f.read_text(encoding='utf-8', errors='replace') if f.exists() else ''
+              title = re.search(r'<title[^>]*>(.*?)</title>', text, re.I|re.S)
+              html[name] = {
+                  'title': title.group(1).strip() if title else '',
+                  'stylesheets': re.findall(r'<link[^>]+href=["\']([^"\']+\.css[^"\']*)', text, re.I),
+                  'scripts': re.findall(r'<script[^>]+src=["\']([^"\']+)', text, re.I),
+                  'inlineStyle': '<style' in text.lower(),
+                  'graph404': 'Skip to the knowledge graph' in text,
+              }
+          browser_file = base/'browser-report.json'
+          browser = json.loads(browser_file.read_text(encoding='utf-8')) if browser_file.exists() else []
+          (base/'report.json').write_text(json.dumps({'curl': rows, 'html': html, 'browser': browser}, indent=2), encoding='utf-8')
+          PY
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-live-site-evidence-${{ github.run_id }}
+          path: live-audit/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Mark broken routes after preserving evidence
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('live-audit/report.json').read_text(encoding='utf-8'))
+          curl = {r['name']: r for r in report['curl']}
+          failures = []
+          for name in ['root','cases','maneka','review','styles','case-css','app-js','case-js','service-worker','offline']:
+              if curl.get(name, {}).get('code') != '200': failures.append(f'{name}: HTTP {curl.get(name, {}).get("code", "missing")}')
+          if curl.get('missing', {}).get('code') != '404': failures.append(f'missing: HTTP {curl.get("missing", {}).get("code", "missing")}')
+          for x in report.get('browser', []):
+              if x['name'] != 'missing' and x.get('status') != 200: failures.append(f'{x["size"]}/{x["name"]}: HTTP {x.get("status")}')
+              if x['name'] != 'missing' and not x.get('state', {}).get('stylesheets'): failures.append(f'{x["size"]}/{x["name"]}: no stylesheet')
+              if x.get('state', {}).get('overflow'): failures.append(f'{x["size"]}/{x["name"]}: horizontal overflow')
+              if x['name'] != 'missing' and x.get('state', {}).get('graph404'): failures.append(f'{x["size"]}/{x["name"]}: graph 404 body')
+          if failures:
+              print('\n'.join(failures))
+              raise SystemExit(1)
+          print('External live site audit passed.')
+          PY
