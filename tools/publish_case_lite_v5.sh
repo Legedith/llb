@@ -30,6 +30,8 @@ python "$source_root/build_case_lite.py" \
   2>&1 | tee "$evidence/generator.log"
 
 cat tools/case-detail-compat.css >> case.css
+cat tools/case-detail-compat.css >> case.css
+cp tools/sw-v4.js sw.js
 node --check case.js
 node --check sw.js
 
@@ -88,6 +90,9 @@ assert len(subject_casebooks) == stats["subjectsCovered"], (
     "subjectCasebooks", len(subject_casebooks), stats["subjectsCovered"]
 )
 assert len(node_pages) >= 4337, ("nodePages", len(node_pages))
+assert "case-lite markup compatibility" in (root / "case.css").read_text(encoding="utf-8")
+assert "du-llb-cases-v4" in (root / "sw.js").read_text(encoding="utf-8")
+assert "networkFirst" in (root / "sw.js").read_text(encoding="utf-8")
 assert "case-lite markup compatibility" in (root / "case.css").read_text(encoding="utf-8")
 
 html_files = sorted(root.rglob("*.html"))

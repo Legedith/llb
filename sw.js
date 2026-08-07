@@ -1,1 +1,73 @@
-const CACHE='du-llb-cases-v3';const CORE=['/llb/','/llb/styles.css','/llb/app.js','/llb/node.css','/llb/node.js','/llb/case.css','/llb/case.js','/llb/cases/','/llb/offline.html'];self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting())));self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(u.origin!==location.origin||!u.pathname.startsWith('/llb/'))return;if(e.request.mode==='navigate'){e.respondWith(fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return r}).catch(()=>caches.match(e.request).then(r=>r||caches.match('/llb/offline.html'))));return}e.respondWith(caches.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy))}return r})))});
+const CACHE = 'du-llb-cases-v4';
+const BASE = '/llb/';
+const CORE = [
+  BASE,
+  `${BASE}styles.css`,
+  `${BASE}app.js`,
+  `${BASE}node.css`,
+  `${BASE}node.js`,
+  `${BASE}case.css`,
+  `${BASE}case.js`,
+  `${BASE}cases/`,
+  `${BASE}offline.html`,
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE)
+      .then(cache => cache.addAll(CORE))
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+async function networkFirst(request, fallbackUrl = '') {
+  const cache = await caches.open(CACHE);
+  try {
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch (_) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    if (fallbackUrl) return cache.match(fallbackUrl);
+    return Response.error();
+  }
+}
+
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) await cache.put(request, response.clone());
+  return response;
+}
+
+self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(BASE)) return;
+
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(networkFirst(event.request, `${BASE}offline.html`));
+    return;
+  }
+
+  if (
+    ['style', 'script', 'manifest'].includes(event.request.destination)
+    || url.pathname.includes('/data/')
+  ) {
+    event.respondWith(networkFirst(event.request));
+    return;
+  }
+
+  event.respondWith(cacheFirst(event.request));
+});
