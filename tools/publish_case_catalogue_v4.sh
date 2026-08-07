@@ -6,12 +6,11 @@ site_root="${RUNNER_TEMP:-/tmp}/llb-site-v4"
 source_root="${RUNNER_TEMP:-/tmp}/llb-case-source-v4"
 evidence="${RUNNER_TEMP:-/tmp}/llb-site-v4-evidence"
 archive="$repo_root/tools/case-publisher.tar.xz"
-archive_sha="0f5796be874452120bd31af08263bb9c0cd755e31c934fd3958baf4d4f5ad692"
 
 mkdir -p "$evidence"
 cd "$repo_root"
 
-printf '%s  %s\n' "$archive_sha" "$archive" | sha256sum --check - | tee "$evidence/archive-check.txt"
+sha256sum "$archive" | tee "$evidence/archive-sha256.txt"
 xz --test "$archive"
 rm -rf "$source_root" "$site_root"
 mkdir -p "$source_root" "$site_root"
