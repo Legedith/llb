@@ -65,8 +65,6 @@ required = [
     "cases/compare/index.html",
     "cases/trails/index.html",
     "cases/trails/liberty-due-process-and-privacy/index.html",
-    "subjects/lb-101/cases/index.html",
-    "nodes/lb-101.m01.t01/index.html",
     "case.css",
     "case.js",
     "sw.js",
@@ -82,6 +80,13 @@ required = [
 missing = [path for path in required if not (root / path).is_file()]
 assert not missing, missing
 assert (root / "deploy-marker.txt").read_text(encoding="utf-8").strip() == "LLB_CASE_LITE_V5"
+
+subject_casebooks = sorted(root.glob("subjects/*/cases/index.html"))
+node_pages = sorted(root.glob("nodes/*/index.html"))
+assert len(subject_casebooks) == stats["subjectsCovered"], (
+    "subjectCasebooks", len(subject_casebooks), stats["subjectsCovered"]
+)
+assert len(node_pages) >= 4337, ("nodePages", len(node_pages))
 
 html_files = sorted(root.rglob("*.html"))
 assert len(html_files) >= 4670, len(html_files)
@@ -177,8 +182,6 @@ cases	/llb/cases/
 maneka	/llb/cases/sc-1978-maneka-gandhi-v-union-of-india/
 review	/llb/cases/review/
 trail	/llb/cases/trails/liberty-due-process-and-privacy/
-subject	/llb/subjects/lb-101/cases/
-node	/llb/nodes/lb-101.m01.t01/
 styles	/llb/styles.css
 case-css	/llb/case.css
 case-js	/llb/case.js

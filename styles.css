@@ -258,3 +258,6 @@ dialog { color: var(--ink); }
 }
 
 .content-banner{max-width:1180px;margin:1.25rem auto 5rem;padding:1rem;border:1px solid var(--line,#d9d0bf);border-radius:16px;background:#fffdf7;display:grid;gap:.35rem}.content-banner strong{font-size:1rem}.content-banner span{color:var(--muted,#665f54);font-size:.85rem}.content-banner a{font-weight:750;color:var(--accent,#164f46)}
+
+/* CASE-CATALOGUE-HOME */
+.header-case-link{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 .78rem;border:1px solid var(--line);border-radius:999px;color:var(--ink);font-size:.74rem;font-weight:800;text-decoration:none;background:var(--paper)}.case-spotlight{display:grid;gap:.2rem;margin:.9rem 0 0;padding:1rem;border:1px solid #c7b58d;border-radius:18px;background:linear-gradient(135deg,#fff8e7,#e5f0ea);color:var(--ink);text-decoration:none;box-shadow:0 10px 28px rgba(49,39,24,.08)}.case-spotlight span{font-size:.68rem;font-weight:900;letter-spacing:.12em;color:var(--warm)}.case-spotlight strong{font-family:var(--serif);font-size:1.25rem;line-height:1.15}.case-spotlight small{color:var(--muted);line-height:1.45}.bottom-nav{grid-template-columns:repeat(5,1fr)}.case-nav-item{text-decoration:none}@media(max-width:370px){.header-case-link{padding:0 .55rem;font-size:.68rem}.brand small{display:none}}
