@@ -1,19 +1,19 @@
-name: Publish validated LL.B. study library and case catalogue
+name: Publish complete case catalogue v5
 
 on:
   push:
     branches: [main]
     paths:
       - ".github/workflows/build-site.yml"
-      - "tools/publish_case_catalogue_v4.sh"
-      - "tools/case-publisher.tar.xz"
+      - "tools/publish_case_lite_v5.sh"
+      - "tools/case-lite-publisher.tar.xz.b64.part*"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: llb-site-v4-publisher
+  group: llb-case-v5-publisher
   cancel-in-progress: false
 
 jobs:
@@ -27,15 +27,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build, validate, and publish the complete repaired site
+      - name: Reconstruct, generate, validate, and publish
         shell: bash
-        run: bash tools/publish_case_catalogue_v4.sh
+        run: bash tools/publish_case_lite_v5.sh
 
-      - name: Upload deterministic validation evidence
+      - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llb-site-v4-build-${{ github.run_id }}
-          path: ${{ runner.temp }}/llb-site-v4-evidence/
+          name: llb-case-v5-${{ github.run_id }}
+          path: ${{ runner.temp }}/llb-case-v5-evidence/
           if-no-files-found: error
           retention-days: 30
