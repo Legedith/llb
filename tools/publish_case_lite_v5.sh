@@ -29,6 +29,7 @@ python "$source_root/build_case_lite.py" \
   --assets "$source_root" \
   2>&1 | tee "$evidence/generator.log"
 
+cat tools/case-detail-compat.css >> case.css
 node --check case.js
 node --check sw.js
 
@@ -87,6 +88,7 @@ assert len(subject_casebooks) == stats["subjectsCovered"], (
     "subjectCasebooks", len(subject_casebooks), stats["subjectsCovered"]
 )
 assert len(node_pages) >= 4337, ("nodePages", len(node_pages))
+assert "case-lite markup compatibility" in (root / "case.css").read_text(encoding="utf-8")
 
 html_files = sorted(root.rglob("*.html"))
 assert len(html_files) >= 4670, len(html_files)
