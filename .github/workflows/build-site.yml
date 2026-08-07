@@ -1,28 +1,24 @@
-name: Build LL.B. study library and case catalogue
+name: Publish validated LL.B. study library and case catalogue
 
 on:
   push:
     branches: [main]
     paths:
       - ".github/workflows/build-site.yml"
-      - "tools/publish_repaired_site.sh"
-      - "tools/repair-assets/**"
-      - "tools/validate_repaired_site.py"
-  workflow_run:
-    workflows: ["pages-build-deployment"]
-    types: [completed]
+      - "tools/publish_case_catalogue_v4.sh"
+      - "tools/case-publisher.tar.xz"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: llb-site-repair-build
+  group: llb-site-v4-publisher
   cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -31,27 +27,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Decide whether the generated repair is already present
-        id: guard
+      - name: Build, validate, and publish the complete repaired site
         shell: bash
-        run: |
-          if [ -f deploy-marker.txt ] && grep -qx 'LLB_STATIC_REPAIR_20260807_V3' deploy-marker.txt; then
-            echo 'build=false' >> "$GITHUB_OUTPUT"
-            echo 'The repaired generated root is already on main.'
-          else
-            echo 'build=true' >> "$GITHUB_OUTPUT"
-          fi
+        run: bash tools/publish_case_catalogue_v4.sh
 
-      - name: Build, validate, screenshot, and publish the repaired site
-        if: steps.guard.outputs.build == 'true'
-        shell: bash
-        run: bash tools/publish_repaired_site.sh
-
-      - name: Upload validation logs and screenshots
-        if: always() && steps.guard.outputs.build == 'true'
+      - name: Upload deterministic validation evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: repaired-site-build-${{ github.run_id }}
-          path: ${{ runner.temp }}/llb-repair-evidence/
+          name: llb-site-v4-build-${{ github.run_id }}
+          path: ${{ runner.temp }}/llb-site-v4-evidence/
           if-no-files-found: error
           retention-days: 30
