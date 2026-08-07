@@ -46,14 +46,14 @@ jobs:
           text = "\n".join(lines) + "\n"
 
           marker = 'assert (root / "deploy-marker.txt").read_text(encoding="utf-8").strip() == "LLB_CASE_LITE_V5"'
-          dynamic_checks = '''
-subject_casebooks = sorted(root.glob("subjects/*/cases/index.html"))
-node_pages = sorted(root.glob("nodes/*/index.html"))
-assert len(subject_casebooks) == stats["subjectsCovered"], (
-    "subjectCasebooks", len(subject_casebooks), stats["subjectsCovered"]
-)
-assert len(node_pages) >= 4337, ("nodePages", len(node_pages))
-'''.strip()
+          dynamic_checks = "\n".join((
+              'subject_casebooks = sorted(root.glob("subjects/*/cases/index.html"))',
+              'node_pages = sorted(root.glob("nodes/*/index.html"))',
+              'assert len(subject_casebooks) == stats["subjectsCovered"], (',
+              '    "subjectCasebooks", len(subject_casebooks), stats["subjectsCovered"]',
+              ')',
+              'assert len(node_pages) >= 4337, ("nodePages", len(node_pages))',
+          ))
           if dynamic_checks not in text:
               if marker not in text:
                   raise SystemExit("deploy-marker validation anchor was not found")
