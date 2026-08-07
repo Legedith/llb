@@ -1,4 +1,4 @@
-name: Publish complete case catalogue v7
+name: Publish complete case catalogue v8
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - ".github/workflows/build-site.yml"
       - "tools/publish_case_lite_v5.sh"
       - "tools/case-detail-compat.css"
+      - "tools/sw-v4.js"
       - "tools/case-lite-publisher.tar.xz.b64.part*"
   workflow_dispatch:
 
@@ -14,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: llb-case-v7-publisher
+  group: llb-case-v8-publisher
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +29,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate, apply the case-detail compatibility layer, validate, and publish
+      - name: Generate, apply presentation and cache repairs, validate, and publish
         shell: bash
         run: |
           set -euo pipefail
@@ -60,19 +61,26 @@ jobs:
                   raise SystemExit("deploy-marker validation anchor was not found")
               text = text.replace(marker, marker + "\n\n" + dynamic_checks, 1)
 
-          compat_command = 'cat tools/case-detail-compat.css >> case.css'
+          commands = "\n".join((
+              'cat tools/case-detail-compat.css >> case.css',
+              'cp tools/sw-v4.js sw.js',
+          ))
           command_anchor = 'node --check case.js'
-          if compat_command not in text:
+          if 'cp tools/sw-v4.js sw.js' not in text:
               if command_anchor not in text:
                   raise SystemExit("case.js validation anchor was not found")
-              text = text.replace(command_anchor, compat_command + "\n" + command_anchor, 1)
+              text = text.replace(command_anchor, commands + "\n" + command_anchor, 1)
 
-          compat_assert = 'assert "case-lite markup compatibility" in (root / "case.css").read_text(encoding="utf-8")'
           validation_anchor = 'assert len(node_pages) >= 4337, ("nodePages", len(node_pages))'
-          if compat_assert not in text:
+          extra_asserts = "\n".join((
+              'assert "case-lite markup compatibility" in (root / "case.css").read_text(encoding="utf-8")',
+              'assert "du-llb-cases-v4" in (root / "sw.js").read_text(encoding="utf-8")',
+              'assert "networkFirst" in (root / "sw.js").read_text(encoding="utf-8")',
+          ))
+          if 'assert "du-llb-cases-v4"' not in text:
               if validation_anchor not in text:
                   raise SystemExit("dynamic validation anchor was not found")
-              text = text.replace(validation_anchor, validation_anchor + "\n" + compat_assert, 1)
+              text = text.replace(validation_anchor, validation_anchor + "\n" + extra_asserts, 1)
 
           path.write_text(text, encoding="utf-8")
           PY
@@ -82,7 +90,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llb-case-v7-${{ github.run_id }}
+          name: llb-case-v8-${{ github.run_id }}
           path: ${{ runner.temp }}/llb-case-v5-evidence/
           if-no-files-found: error
           retention-days: 30
