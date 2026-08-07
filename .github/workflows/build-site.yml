@@ -1,4 +1,4 @@
-name: Publish complete case catalogue v6
+name: Publish complete case catalogue v7
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/build-site.yml"
       - "tools/publish_case_lite_v5.sh"
+      - "tools/case-detail-compat.css"
       - "tools/case-lite-publisher.tar.xz.b64.part*"
   workflow_dispatch:
 
@@ -13,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: llb-case-v6-publisher
+  group: llb-case-v7-publisher
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Repair stale validation sentinels, generate, validate, and publish
+      - name: Generate, apply the case-detail compatibility layer, validate, and publish
         shell: bash
         run: |
           set -euo pipefail
@@ -58,6 +59,21 @@ jobs:
               if marker not in text:
                   raise SystemExit("deploy-marker validation anchor was not found")
               text = text.replace(marker, marker + "\n\n" + dynamic_checks, 1)
+
+          compat_command = 'cat tools/case-detail-compat.css >> case.css'
+          command_anchor = 'node --check case.js'
+          if compat_command not in text:
+              if command_anchor not in text:
+                  raise SystemExit("case.js validation anchor was not found")
+              text = text.replace(command_anchor, compat_command + "\n" + command_anchor, 1)
+
+          compat_assert = 'assert "case-lite markup compatibility" in (root / "case.css").read_text(encoding="utf-8")'
+          validation_anchor = 'assert len(node_pages) >= 4337, ("nodePages", len(node_pages))'
+          if compat_assert not in text:
+              if validation_anchor not in text:
+                  raise SystemExit("dynamic validation anchor was not found")
+              text = text.replace(validation_anchor, validation_anchor + "\n" + compat_assert, 1)
+
           path.write_text(text, encoding="utf-8")
           PY
           bash tools/publish_case_lite_v5.sh
@@ -66,7 +82,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llb-case-v6-${{ github.run_id }}
+          name: llb-case-v7-${{ github.run_id }}
           path: ${{ runner.temp }}/llb-case-v5-evidence/
           if-no-files-found: error
           retention-days: 30
