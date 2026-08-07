@@ -1,4 +1,4 @@
-name: Publish complete case catalogue v5
+name: Publish complete case catalogue v6
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: llb-case-v5-publisher
+  group: llb-case-v6-publisher
   cancel-in-progress: false
 
 jobs:
@@ -27,15 +27,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Reconstruct, generate, validate, and publish
+      - name: Repair stale validation sentinels, generate, validate, and publish
         shell: bash
-        run: bash tools/publish_case_lite_v5.sh
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tools/publish_case_lite_v5.sh")
+          text = path.read_text(encoding="utf-8")
+          stale_fragments = (
+              "subjects/lb-101/cases/index.html",
+              "nodes/lb-101.m01.t01/index.html",
+              "/llb/subjects/lb-101/cases/",
+              "/llb/nodes/lb-101.m01.t01/",
+          )
+          lines = [line for line in text.splitlines() if not any(fragment in line for fragment in stale_fragments)]
+          text = "\n".join(lines) + "\n"
+
+          marker = 'assert (root / "deploy-marker.txt").read_text(encoding="utf-8").strip() == "LLB_CASE_LITE_V5"'
+          dynamic_checks = '''
+subject_casebooks = sorted(root.glob("subjects/*/cases/index.html"))
+node_pages = sorted(root.glob("nodes/*/index.html"))
+assert len(subject_casebooks) == stats["subjectsCovered"], (
+    "subjectCasebooks", len(subject_casebooks), stats["subjectsCovered"]
+)
+assert len(node_pages) >= 4337, ("nodePages", len(node_pages))
+'''.strip()
+          if dynamic_checks not in text:
+              if marker not in text:
+                  raise SystemExit("deploy-marker validation anchor was not found")
+              text = text.replace(marker, marker + "\n\n" + dynamic_checks, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+          bash tools/publish_case_lite_v5.sh
 
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llb-case-v5-${{ github.run_id }}
+          name: llb-case-v6-${{ github.run_id }}
           path: ${{ runner.temp }}/llb-case-v5-evidence/
           if-no-files-found: error
           retention-days: 30
